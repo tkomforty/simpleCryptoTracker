@@ -313,6 +313,11 @@ h1::after {
   font-size: 1.1rem;
 }
 
+.price-change-label {
+  font-weight: 500;
+  margin-right: 2px;
+}
+
 .price-movement {
   display: flex;
   gap: 0.5rem;
@@ -539,16 +544,17 @@ h1::after {
         };
 
         // Format the percent change
-        const formatPercentChange = (percentChange) => {
-          const formattedValue = percentChange.toFixed(2);
-          const isPositive = percentChange >= 0;
-          return (
-            <div className={isPositive ? 'price-change positive-change' : 'price-change negative-change'}>
-              <span className="price-change-icon">{isPositive ? '↑' : '↓'}</span>
-              {isPositive ? '+' : ''}{formattedValue}%
-            </div>
-          );
-        };
+// Format the percent change
+const formatPercentChange = (percentChange) => {
+  const formattedValue = percentChange.toFixed(2);
+  const isPositive = percentChange >= 0;
+  return (
+    <div className={isPositive ? 'price-change positive-change' : 'price-change negative-change'}>
+      <span className="price-change-icon">{isPositive ? '↑' : '↓'}</span>
+      <span className="price-change-label">24h: </span>{isPositive ? '+' : ''}{formattedValue}%
+    </div>
+  );
+};
         
         // Calculate and format price change since last update
         const getRecentChange = (crypto) => {
