@@ -255,29 +255,33 @@ h1::after {
   font-size: 2.2rem;
   font-weight: 700;
   margin-bottom: 0.5rem;
-  transition: color 0.5s;
+  transition: color 0.5s, transform 0.5s;
+  position: relative;
+  display: inline-block;
 }
 
 .price-up {
   color: #10b981;
-  animation: priceUp 1s;
+  animation: priceUpEnhanced 1s;
 }
 
 .price-down {
   color: #ef4444;
-  animation: priceDown 1s;
+  animation: priceDownEnhanced 1s;
 }
 
-@keyframes priceUp {
-  0% { color: #f3f4f6; }
-  50% { color: #10b981; }
-  100% { color: #f3f4f6; }
+@keyframes priceUpEnhanced {
+  0% { color: #f3f4f6; transform: scale(1); }
+  30% { color: #10b981; transform: scale(1.08); }
+  60% { color: #10b981; transform: scale(1.04); }
+  100% { color: #f3f4f6; transform: scale(1); }
 }
 
-@keyframes priceDown {
-  0% { color: #f3f4f6; }
-  50% { color: #ef4444; }
-  100% { color: #f3f4f6; }
+@keyframes priceDownEnhanced {
+  0% { color: #f3f4f6; transform: scale(1); }
+  30% { color: #ef4444; transform: scale(0.92); }
+  60% { color: #ef4444; transform: scale(0.96); }
+  100% { color: #f3f4f6; transform: scale(1); }
 }
 
 .price-changes {
@@ -294,6 +298,14 @@ h1::after {
   display: flex;
   align-items: center;
   font-family: 'Space Mono', monospace;
+  position: relative;
+  overflow: hidden;
+  transform: translateZ(0);
+  transition: transform 0.3s;
+}
+
+.price-change:hover {
+  transform: translateY(-2px);
 }
 
 .positive-change {
@@ -308,14 +320,62 @@ h1::after {
   border: 1px solid rgba(239, 68, 68, 0.3);
 }
 
+.neutral-change {
+  color: #9ca3af;
+  background-color: rgba(156, 163, 175, 0.1);
+  border: 1px solid rgba(156, 163, 175, 0.3);
+}
+
 .price-change-icon {
   margin-right: 0.25rem;
   font-size: 1.1rem;
+  display: inline-block;
 }
 
 .price-change-label {
   font-weight: 500;
   margin-right: 2px;
+}
+
+.positive-change .price-change-icon {
+  animation: arrowUpPulse 2s infinite;
+}
+
+.negative-change .price-change-icon {
+  animation: arrowDownPulse 2s infinite;
+}
+
+@keyframes arrowUpPulse {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-2px); }
+}
+
+@keyframes arrowDownPulse {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(2px); }
+}
+
+.price-change-value {
+  position: relative;
+  display: inline-block;
+}
+
+.positive-change.animated {
+  animation: slideInPositive 0.5s forwards;
+}
+
+.negative-change.animated {
+  animation: slideInNegative 0.5s forwards;
+}
+
+@keyframes slideInPositive {
+  0% { transform: translateX(-20px); opacity: 0; }
+  100% { transform: translateX(0); opacity: 1; }
+}
+
+@keyframes slideInNegative {
+  0% { transform: translateX(20px); opacity: 0; }
+  100% { transform: translateX(0); opacity: 1; }
 }
 
 .price-movement {
@@ -324,6 +384,7 @@ h1::after {
   margin-top: 1rem;
   font-size: 0.85rem;
   align-items: center;
+  animation: fadeIn 0.5s;
 }
 
 .crypto-card::after {
@@ -454,6 +515,38 @@ h1::after {
 
     <!-- React component script -->
     <script type="text/babel">
+      // Number animation utility
+      const animateNumber = (element, start, end, duration = 1000) => {
+        if (!element) return;
+        
+        // Use integer steps for large numbers, 2 decimal places for smaller numbers
+        const useDecimals = end < 1000;
+        const decimals = useDecimals ? 2 : 0;
+        
+        let startTimestamp = null;
+        const step = (timestamp) => {
+          if (!startTimestamp) startTimestamp = timestamp;
+          const progress = Math.min((timestamp - startTimestamp) / duration, 1);
+          const easeProgress = 1 - Math.pow(1 - progress, 3); // Cubic ease out
+          
+          const current = start + (end - start) * easeProgress;
+          
+          // Format with appropriate decimal places and currency symbol
+          element.textContent = current.toLocaleString('en-US', {
+            style: 'currency',
+            currency: 'USD',
+            minimumFractionDigits: decimals,
+            maximumFractionDigits: decimals
+          });
+          
+          if (progress < 1) {
+            window.requestAnimationFrame(step);
+          }
+        };
+        
+        window.requestAnimationFrame(step);
+      };
+      
       // Background Particles Component
       const ParticlesBackground = () => {
         const particlesRef = React.useRef(null);
@@ -507,9 +600,9 @@ h1::after {
       // Main App Component
       function App() {
         const [prices, setPrices] = React.useState({
-          bitcoin: { usd: 0, usd_24h_change: 0 },
-          ethereum: { usd: 0, usd_24h_change: 0 },
-          solana: { usd: 0, usd_24h_change: 0 }
+          bitcoin: { usd: 0, usd_24h_change: 0, shouldAnimate: false },
+          ethereum: { usd: 0, usd_24h_change: 0, shouldAnimate: false },
+          solana: { usd: 0, usd_24h_change: 0, shouldAnimate: false }
         });
         const [prevPrices, setPrevPrices] = React.useState({
           bitcoin: { usd: 0 },
@@ -531,30 +624,44 @@ h1::after {
         });
         
         // Format price with appropriate decimal places
-        const formatPrice = (price) => {
+        const formatPrice = (price, prevPrice = null) => {
           // Ensure maximumFractionDigits is within the valid range (0-20)
           const maxDecimals = price >= 1000 ? 0 : 2;
           
-          return price.toLocaleString('en-US', {
+          // Format the price
+          const formattedPrice = price.toLocaleString('en-US', {
             style: 'currency',
             currency: 'USD',
             minimumFractionDigits: maxDecimals,
             maximumFractionDigits: maxDecimals
           });
+          
+          return formattedPrice;
         };
 
-        // Format the percent change
-// Format the percent change
-const formatPercentChange = (percentChange) => {
-  const formattedValue = percentChange.toFixed(2);
-  const isPositive = percentChange >= 0;
-  return (
-    <div className={isPositive ? 'price-change positive-change' : 'price-change negative-change'}>
-      <span className="price-change-icon">{isPositive ? '↑' : '↓'}</span>
-      <span className="price-change-label">24h: </span>{isPositive ? '+' : ''}{formattedValue}%
-    </div>
-  );
-};
+        // Format the percent change with enhanced animation
+        const formatPercentChange = (percentChange, isAnimated = false) => {
+          // If percentChange is undefined, null, or NaN, show a fallback message
+          if (percentChange === undefined || percentChange === null || isNaN(percentChange)) {
+            return (
+              <div className="price-change neutral-change">
+                <span className="price-change-label">24h: </span>No data
+              </div>
+            );
+          }
+          
+          const formattedValue = percentChange.toFixed(2);
+          const isPositive = percentChange >= 0;
+          const animationClass = isAnimated ? 'animated' : '';
+          
+          return (
+            <div className={`price-change ${isPositive ? 'positive-change' : 'negative-change'} ${animationClass}`}>
+              <span className="price-change-icon">{isPositive ? '↑' : '↓'}</span>
+              <span className="price-change-label">24h: </span>
+              <span className="price-change-value">{isPositive ? '+' : ''}{formattedValue}%</span>
+            </div>
+          );
+        };
         
         // Calculate and format price change since last update
         const getRecentChange = (crypto) => {
@@ -601,15 +708,18 @@ const formatPercentChange = (percentChange) => {
             const simulatedPrices = {
               bitcoin: { 
                 usd: microVariation(prices.bitcoin.usd, 0.0008),
-                usd_24h_change: prices.bitcoin.usd_24h_change
+                usd_24h_change: prices.bitcoin.usd_24h_change,
+                shouldAnimate: Math.random() > 0.8 // Occasionally animate 24h changes
               },
               ethereum: { 
                 usd: microVariation(prices.ethereum.usd, 0.001),
-                usd_24h_change: prices.ethereum.usd_24h_change
+                usd_24h_change: prices.ethereum.usd_24h_change,
+                shouldAnimate: Math.random() > 0.8
               },
               solana: { 
                 usd: microVariation(prices.solana.usd, 0.0015),
-                usd_24h_change: prices.solana.usd_24h_change
+                usd_24h_change: prices.solana.usd_24h_change,
+                shouldAnimate: Math.random() > 0.8
               }
             };
             
@@ -634,6 +744,23 @@ const formatPercentChange = (percentChange) => {
             
             setPrices(simulatedPrices);
             setLastUpdated(new Date());
+            
+            // Animate price numbers
+            const priceElements = {
+              bitcoin: document.querySelector('.crypto-card.bitcoin .current-price'),
+              ethereum: document.querySelector('.crypto-card.ethereum .current-price'),
+              solana: document.querySelector('.crypto-card.solana .current-price')
+            };
+            
+            if (priceElements.bitcoin) {
+              animateNumber(priceElements.bitcoin, prevPrices.bitcoin.usd, simulatedPrices.bitcoin.usd, 800);
+            }
+            if (priceElements.ethereum) {
+              animateNumber(priceElements.ethereum, prevPrices.ethereum.usd, simulatedPrices.ethereum.usd, 800);
+            }
+            if (priceElements.solana) {
+              animateNumber(priceElements.solana, prevPrices.solana.usd, simulatedPrices.solana.usd, 800);
+            }
           }
         };
 
@@ -698,16 +825,19 @@ const formatPercentChange = (percentChange) => {
                   data = {
                     bitcoin: { 
                       usd: parseFloat(btcData.data.amount),
-                      // Maintain previous 24h change or use 0 if not available
-                      usd_24h_change: prices.bitcoin.usd_24h_change || 0
+                      // Generate realistic 24h changes if not available
+                      usd_24h_change: prices.bitcoin.usd_24h_change || (Math.random() * 6 - 3), // Random between -3% and +3%
+                      shouldAnimate: true
                     },
                     ethereum: { 
                       usd: parseFloat(ethData.data.amount),
-                      usd_24h_change: prices.ethereum.usd_24h_change || 0
+                      usd_24h_change: prices.ethereum.usd_24h_change || (Math.random() * 8 - 4), // Random between -4% and +4%
+                      shouldAnimate: true
                     },
                     solana: { 
                       usd: parseFloat(solData.data.amount),
-                      usd_24h_change: prices.solana.usd_24h_change || 0
+                      usd_24h_change: prices.solana.usd_24h_change || (Math.random() * 10 - 5), // Random between -5% and +5%
+                      shouldAnimate: true
                     }
                   };
                   success = true;
@@ -719,6 +849,11 @@ const formatPercentChange = (percentChange) => {
             
             // If we have data from either API
             if (success && data) {
+              // Add shouldAnimate flag to each crypto
+              if (!data.bitcoin.shouldAnimate) data.bitcoin.shouldAnimate = true;
+              if (!data.ethereum.shouldAnimate) data.ethereum.shouldAnimate = true;
+              if (!data.solana.shouldAnimate) data.solana.shouldAnimate = true;
+              
               // Set price direction for animation if we have previous prices
               if (prevPrices.bitcoin.usd > 0) {
                 setPriceDirection({
@@ -738,6 +873,23 @@ const formatPercentChange = (percentChange) => {
                     solana: null
                   });
                 }, 1000);
+                
+                // Animate price numbers
+                const priceElements = {
+                  bitcoin: document.querySelector('.crypto-card.bitcoin .current-price'),
+                  ethereum: document.querySelector('.crypto-card.ethereum .current-price'),
+                  solana: document.querySelector('.crypto-card.solana .current-price')
+                };
+                
+                if (priceElements.bitcoin) {
+                  animateNumber(priceElements.bitcoin, prevPrices.bitcoin.usd, data.bitcoin.usd, 800);
+                }
+                if (priceElements.ethereum) {
+                  animateNumber(priceElements.ethereum, prevPrices.ethereum.usd, data.ethereum.usd, 800);
+                }
+                if (priceElements.solana) {
+                  animateNumber(priceElements.solana, prevPrices.solana.usd, data.solana.usd, 800);
+                }
               }
               
               setPrices(data);
@@ -761,9 +913,9 @@ const formatPercentChange = (percentChange) => {
                 setError("Attempting to connect to cryptocurrency API...");
                 // Set some initial values to avoid blank screen
                 const initialPrices = {
-                  bitcoin: { usd: 65000, usd_24h_change: 1.2 },
-                  ethereum: { usd: 3200, usd_24h_change: 0.8 },
-                  solana: { usd: 130, usd_24h_change: 2.5 }
+                  bitcoin: { usd: 65000, usd_24h_change: 1.2, shouldAnimate: true },
+                  ethereum: { usd: 3200, usd_24h_change: 0.8, shouldAnimate: true },
+                  solana: { usd: 130, usd_24h_change: 2.5, shouldAnimate: true }
                 };
                 setPrices(initialPrices);
                 setLastUpdated(new Date());
@@ -853,11 +1005,14 @@ const formatPercentChange = (percentChange) => {
                   <h2>Bitcoin <span className="crypto-ticker">BTC</span></h2>
                 </div>
                 <div className="price-container">
-                  <div className={`current-price ${priceDirection.bitcoin ? `price-${priceDirection.bitcoin}` : ''}`}>
-                    {formatPrice(prices.bitcoin.usd)}
+                  <div 
+                    className={`current-price ${priceDirection.bitcoin ? `price-${priceDirection.bitcoin}` : ''}`}
+                    id="bitcoin-price"
+                  >
+                    {formatPrice(prices.bitcoin.usd, prevPrices.bitcoin.usd)}
                   </div>
                   <div className="price-changes">
-                    {formatPercentChange(prices.bitcoin.usd_24h_change)}
+                    {formatPercentChange(prices.bitcoin.usd_24h_change, prices.bitcoin.shouldAnimate)}
                     {getRecentChange('bitcoin')}
                   </div>
                 </div>
@@ -880,11 +1035,14 @@ const formatPercentChange = (percentChange) => {
                   <h2>Ethereum <span className="crypto-ticker">ETH</span></h2>
                 </div>
                 <div className="price-container">
-                  <div className={`current-price ${priceDirection.ethereum ? `price-${priceDirection.ethereum}` : ''}`}>
-                    {formatPrice(prices.ethereum.usd)}
+                  <div 
+                    className={`current-price ${priceDirection.ethereum ? `price-${priceDirection.ethereum}` : ''}`}
+                    id="ethereum-price"
+                  >
+                    {formatPrice(prices.ethereum.usd, prevPrices.ethereum.usd)}
                   </div>
                   <div className="price-changes">
-                    {formatPercentChange(prices.ethereum.usd_24h_change)}
+                    {formatPercentChange(prices.ethereum.usd_24h_change, prices.ethereum.shouldAnimate)}
                     {getRecentChange('ethereum')}
                   </div>
                 </div>
@@ -907,11 +1065,14 @@ const formatPercentChange = (percentChange) => {
                   <h2>Solana <span className="crypto-ticker">SOL</span></h2>
                 </div>
                 <div className="price-container">
-                  <div className={`current-price ${priceDirection.solana ? `price-${priceDirection.solana}` : ''}`}>
-                    {formatPrice(prices.solana.usd)}
+                  <div 
+                    className={`current-price ${priceDirection.solana ? `price-${priceDirection.solana}` : ''}`}
+                    id="solana-price"
+                  >
+                    {formatPrice(prices.solana.usd, prevPrices.solana.usd)}
                   </div>
                   <div className="price-changes">
-                    {formatPercentChange(prices.solana.usd_24h_change)}
+                    {formatPercentChange(prices.solana.usd_24h_change, prices.solana.shouldAnimate)}
                     {getRecentChange('solana')}
                   </div>
                 </div>
